@@ -5,4 +5,4 @@
 
 ## Install compiler
 
-[GNU ARM Embedded Tool chain for Linux](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads)
+* [GNU ARM Embedded Tool chain for Linux](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads)

@@ -1,6 +1,10 @@
 # BLDC Driver
 3-phase driver for bldc motor, based on stm32 and l6234.
 
+L6234 Block Diagram
+
+![l6234-block-diag](docs/img/l6234-block-diag.png)
+
 # Installation
 
 ## Install compiler from here

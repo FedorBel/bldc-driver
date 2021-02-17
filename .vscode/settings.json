@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "cstdio": "c",
+        "stat.h": "c",
+        "times.h": "c",
+        "unistd.h": "c",
+        "stm32f10x_usart.h": "c",
+        "stdio.h": "c"
+    }
+}

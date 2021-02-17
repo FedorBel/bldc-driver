@@ -1,0 +1,37 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "stutil",
+            "cwd": "${workspaceRoot}",
+            "executable": "./led.elf",
+            "name": "Debug (ST-Util)",
+            "device": "STM32F103C8t6",
+            "interface": "swd",
+            "v1": false,
+            "svdFile": "${workspaceRoot}/.vscode/STM32F103xx.svd",
+            "configFiles": [
+                "/usr/share/openocd/scripts/target/stm32f1x.cfg",
+                "/usr/share/openocd/scripts/interface/stlink-v2.cfg"
+            ],
+            "runToMain": true,
+        },
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "Debug (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}",
+            "runToMain": true,
+            "executable": "./led.elf",
+            "device": "STM32F103C8",
+            "configFiles": [
+                "/usr/share/openocd/scripts/interface/stlink-v2.cfg",
+                "/usr/share/openocd/scripts/target/stm32f1x.cfg"
+            ],
+            "svdFile": "${workspaceRoot}/.vscode/STM32F103xx.svd",
+        }
+    ]
+}

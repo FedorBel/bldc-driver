@@ -5,6 +5,8 @@
         "times.h": "c",
         "unistd.h": "c",
         "stm32f10x_usart.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "stm32f10x_tim.h": "c",
+        "math.h": "c"
     }
 }

@@ -26,7 +26,7 @@ ST_FLASH ?= st-flash
 
 # specify compiler flags
 CFLAGS  = -DDEBUG -g -Wall -O
-CFLAGS += -T$(STD_PERIPH_LIBS)/Project/STM32F10x_StdPeriph_Template/TrueSTUDIO/STM3210B-EVAL/stm32_flash.ld
+CFLAGS += -Tstm32_flash.ld
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m3 -mthumb-interwork
 CFLAGS += -mfloat-abi=soft -mfpu=fpv4-sp-d16
 CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER

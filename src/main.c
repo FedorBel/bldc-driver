@@ -38,6 +38,8 @@ void TIM1_UP_IRQHandler(void)
 	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
 	{
 		TIM1->CCR1 = sin_tbl_a[sin_ctr];
+		TIM1->CCR2 = sin_tbl_b[sin_ctr];
+		TIM1->CCR3 = sin_tbl_c[sin_ctr];
 		sin_ctr++;
 		if (sin_ctr == SIN_ARR)
 		{
@@ -64,8 +66,8 @@ void sin_pwm_init(void)
 {
 	// Create sin table
 	sin_to_tbl(sin_tbl_a, 0);
-	// sin_to_tbl(sin_tbl_b, deg_to_rad(120));
-	// sin_to_tbl(sin_tbl_c, deg_to_rad(240));
+	sin_to_tbl(sin_tbl_b, deg_to_rad(120));
+	sin_to_tbl(sin_tbl_c, deg_to_rad(240));
 
 	GPIO_InitTypeDef GPIO_InitStructure;
 	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
@@ -99,16 +101,18 @@ void sin_pwm_init(void)
 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
 	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
 	TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
-	TIM_OCInitStructure.TIM_Pulse = AMPL_SIN;
 
 	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
 	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;
 	TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Reset;   /// !!!
 	TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Reset; /// !!!
 
+	TIM_OCInitStructure.TIM_Pulse = sin_tbl_a[0];
 	TIM_OC1Init(TIM1, &TIM_OCInitStructure);
-	//TIM_OC2Init(TIM1, &TIM_OCInitStructure);
-	//TIM_OC3Init(TIM1, &TIM_OCInitStructure);
+	TIM_OCInitStructure.TIM_Pulse = sin_tbl_b[0];
+	TIM_OC2Init(TIM1, &TIM_OCInitStructure);
+	TIM_OCInitStructure.TIM_Pulse = sin_tbl_c[0];
+	TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 
 	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Enable;
 	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Enable;

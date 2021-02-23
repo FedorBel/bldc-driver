@@ -18,7 +18,7 @@ uint16_t sin_tbl_a[SIN_ARR];
 uint16_t sin_tbl_b[SIN_ARR];
 uint16_t sin_tbl_c[SIN_ARR];
 
-int i;
+int sin_ctr;
 
 volatile char buffer[80] = {'\0'};
 
@@ -37,11 +37,11 @@ void TIM1_UP_IRQHandler(void)
 {
 	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
 	{
-		TIM1->CCR1 = sin_tbl_a[i];
-		i++;
-		if (i == SIN_ARR)
+		TIM1->CCR1 = sin_tbl_a[sin_ctr];
+		sin_ctr++;
+		if (sin_ctr == SIN_ARR)
 		{
-			i = 0;
+			sin_ctr = 0;
 		}
 		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
 	}
@@ -337,11 +337,10 @@ int main(void)
 {
 	SetSysClockTo72();
 
-	const unsigned char mytext[] = " Hello World!\r\n";
-	i = 1;
+	// const unsigned char mytext[] = " Hello World!\r\n";
 
 	//USART
-	usart_init();
+	// usart_init();
 	// USARTSend(mytext);
 
 	//ADC
@@ -361,9 +360,6 @@ int main(void)
 	// TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
 	// TIM_Cmd(TIM4, ENABLE);
 
-	// Init sin pwm
-	sin_pwm_init();
-
 	/* NVIC Configuration */
 	/* Enable the TIM4_IRQn Interrupt */
 	// NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
@@ -371,6 +367,10 @@ int main(void)
 	// NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
 	// NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	// NVIC_Init(&NVIC_InitStructure);
+
+	// Init sin pwm
+	sin_ctr = 1;
+	sin_pwm_init();
 
 	while (1)
 	{

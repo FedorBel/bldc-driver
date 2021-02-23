@@ -6,27 +6,141 @@
 #include "stm32f10x_dma.h"
 #include "stm32f10x_tim.h"
 #include "misc.h"
-// #include <math.h>
+#include <math.h>
 
-// #define AMPL_SIN 699
-// #define SIN_ARR 196
-// #define DELTA_ANGL_RAD 2 * M_PI / SIN_ARR
+#define CHOPPER_PERIOD 9000
+#define DEAD_TIME 72
+#define AMPL_SIN 4500
+#define SIN_ARR 20
+#define DELTA_ANGL_RAD 2 * M_PI / SIN_ARR
+
+uint16_t sin_tbl_a[SIN_ARR];
+uint16_t sin_tbl_b[SIN_ARR];
+uint16_t sin_tbl_c[SIN_ARR];
+
+int i;
 
 volatile char buffer[80] = {'\0'};
 
 volatile short FLAG_ECHO = 0;
 
-void TIM4_IRQHandler(void)
+// void TIM4_IRQHandler(void)
+// {
+// 	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)
+// 	{
+// 		FLAG_ECHO = 1;
+// 		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
+// 	}
+// }
+
+void TIM1_UP_IRQHandler(void)
 {
-	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)
+	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
 	{
-		FLAG_ECHO = 1;
-		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
+		TIM1->CCR1 = sin_tbl_a[i];
+		i++;
+		if (i == SIN_ARR)
+		{
+			i = 0;
+		}
+		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
 	}
+}
+
+void sin_to_tbl(uint16_t *sin_tbl, uint16_t phase_shift)
+{
+	for (int i = 0; i < SIN_ARR; i++)
+	{
+		sin_tbl[i] = (uint16_t)(AMPL_SIN * (1 + sin(i * DELTA_ANGL_RAD + phase_shift)));
+	}
+}
+
+inline float deg_to_rad(float angle)
+{
+	return angle * M_PI / 180;
 }
 
 void sin_pwm_init(void)
 {
+	// Create sin table
+	sin_to_tbl(sin_tbl_a, 0);
+	// sin_to_tbl(sin_tbl_b, deg_to_rad(120));
+	// sin_to_tbl(sin_tbl_c, deg_to_rad(240));
+
+	GPIO_InitTypeDef GPIO_InitStructure;
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	TIM_OCInitTypeDef TIM_OCInitStructure;
+	TIM_BDTRInitTypeDef TIM_BDTRInitStructure;
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
+
+	//initialize Tim1 PWM outputs
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
+
+	// Time Base configuration
+	TIM_TimeBaseStructure.TIM_Prescaler = 0;
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_CenterAligned1;
+	TIM_TimeBaseStructure.TIM_Period = CHOPPER_PERIOD;
+	TIM_TimeBaseStructure.TIM_ClockDivision = 0;
+	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
+	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
+
+	// Channel 1, 2, 3 – set to PWM mode - all 6 outputs
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+	TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
+	TIM_OCInitStructure.TIM_Pulse = AMPL_SIN;
+
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;
+	TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Reset;   /// !!!
+	TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Reset; /// !!!
+
+	TIM_OC1Init(TIM1, &TIM_OCInitStructure);
+	//TIM_OC2Init(TIM1, &TIM_OCInitStructure);
+	//TIM_OC3Init(TIM1, &TIM_OCInitStructure);
+
+	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Enable;
+	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Enable;
+	TIM_BDTRInitStructure.TIM_LOCKLevel = TIM_LOCKLevel_OFF;
+
+	// DeadTime[ns] = value * (1/SystemCoreFreq) (on 72MHz: 7 is 98ns)
+	TIM_BDTRInitStructure.TIM_DeadTime = DEAD_TIME;
+
+	TIM_BDTRInitStructure.TIM_AutomaticOutput = TIM_AutomaticOutput_Disable;
+
+	// Break functionality (overload input)
+	// TIM_BDTRInitStructure.TIM_Break = TIM_Break_Enable;
+	// TIM_BDTRInitStructure.TIM_BreakPolarity = TIM_BreakPolarity_Low;
+
+	TIM_BDTRInitStructure.TIM_Break = TIM_Break_Disable;
+	TIM_BDTRInitStructure.TIM_BreakPolarity = TIM_BreakPolarity_High;
+
+	TIM_BDTRConfig(TIM1, &TIM_BDTRInitStructure);
+	TIM_ClearFlag(TIM1, TIM_IT_Update);
+	TIM_ITConfig(TIM1, TIM_IT_Update, ENABLE);
+
+	/* Enable the TIM1_IRQn Interrupt */
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_InitStructure.NVIC_IRQChannel = TIM1_UP_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+
+	TIM_Cmd(TIM1, ENABLE);
+	// enable motor timer main output (the bridge signals)
+	TIM_CtrlPWMOutputs(TIM1, ENABLE);
 }
 
 void usart_init(void)
@@ -224,43 +338,47 @@ int main(void)
 	SetSysClockTo72();
 
 	const unsigned char mytext[] = " Hello World!\r\n";
+	i = 1;
 
 	//USART
 	usart_init();
-	USARTSend(mytext);
+	// USARTSend(mytext);
 
 	//ADC
-	ADC_DMA_init();
+	// ADC_DMA_init();
 
 	// TIMER4
-	TIM_TimeBaseInitTypeDef TIMER_InitStructure;
-	NVIC_InitTypeDef NVIC_InitStructure;
+	// TIM_TimeBaseInitTypeDef TIMER_InitStructure;
+	// NVIC_InitTypeDef NVIC_InitStructure;
 
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+	// RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
 
-	TIM_TimeBaseStructInit(&TIMER_InitStructure);
-	TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
-	TIMER_InitStructure.TIM_Prescaler = 7200;
-	TIMER_InitStructure.TIM_Period = 5000;
-	TIM_TimeBaseInit(TIM4, &TIMER_InitStructure);
-	TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
-	TIM_Cmd(TIM4, ENABLE);
+	// TIM_TimeBaseStructInit(&TIMER_InitStructure);
+	// TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	// TIMER_InitStructure.TIM_Prescaler = 7200;
+	// TIMER_InitStructure.TIM_Period = 5000;
+	// TIM_TimeBaseInit(TIM4, &TIMER_InitStructure);
+	// TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
+	// TIM_Cmd(TIM4, ENABLE);
+
+	// Init sin pwm
+	sin_pwm_init();
 
 	/* NVIC Configuration */
 	/* Enable the TIM4_IRQn Interrupt */
-	NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&NVIC_InitStructure);
+	// NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
+	// NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+	// NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+	// NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	// NVIC_Init(&NVIC_InitStructure);
 
 	while (1)
 	{
-		if (FLAG_ECHO == 1)
-		{
-			sprintf(buffer, "\r\n%d : %d : %d : %d\r\n", ADCBuffer[0], ADCBuffer[1], ADCBuffer[2], ADCBuffer[3]);
-			USARTSend(buffer);
-			FLAG_ECHO = 0;
-		}
+		// if (FLAG_ECHO == 1)
+		// {
+		// 	sprintf(buffer, "\r\n%d : %d : %d : %d\r\n", ADCBuffer[0], ADCBuffer[1], ADCBuffer[2], ADCBuffer[3]);
+		// 	USARTSend(buffer);
+		// 	FLAG_ECHO = 0;
+		// }
 	}
 }

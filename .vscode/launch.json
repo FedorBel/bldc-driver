@@ -6,7 +6,7 @@
             "request": "launch",
             "servertype": "stutil",
             "cwd": "${workspaceRoot}",
-            "executable": "./led.elf",
+            "executable": "./bldc-driver.elf",
             "name": "Debug (ST-Util)",
             "device": "STM32F103C8t6",
             "interface": "swd",

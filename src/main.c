@@ -11,7 +11,7 @@
 #define CHOPPER_PERIOD 9000
 #define DEAD_TIME 72
 #define AMPL_SIN 4500
-#define SIN_ARR 20
+#define SIN_ARR 10
 #define DELTA_ANGL_RAD 2 * M_PI / SIN_ARR
 
 uint16_t sin_tbl_a[SIN_ARR];
@@ -32,11 +32,18 @@ volatile short FLAG_ECHO = 0;
 // 		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
 // 	}
 // }
-
+// TIM1_CC_IRQn
+// TIM1_UP_IRQn
 void TIM1_UP_IRQHandler(void)
 {
 	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
 	{
+		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
+		uint16_t tmp = (TIM1->CR1 & TIM_CR1_DIR);
+		if (tmp == 0)
+		{
+			return;
+		}
 		TIM1->CCR1 = sin_tbl_a[sin_ctr];
 		TIM1->CCR2 = sin_tbl_b[sin_ctr];
 		TIM1->CCR3 = sin_tbl_c[sin_ctr];
@@ -45,7 +52,6 @@ void TIM1_UP_IRQHandler(void)
 		{
 			sin_ctr = 0;
 		}
-		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
 	}
 }
 
@@ -91,21 +97,21 @@ void sin_pwm_init(void)
 
 	// Time Base configuration
 	TIM_TimeBaseStructure.TIM_Prescaler = 0;
-	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_CenterAligned1;
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_CenterAligned2;
 	TIM_TimeBaseStructure.TIM_Period = CHOPPER_PERIOD;
 	TIM_TimeBaseStructure.TIM_ClockDivision = 0;
 	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
 	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
 
 	// Channel 1, 2, 3 – set to PWM mode - all 6 outputs
-	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2;
 	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
 	TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
 
-	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
-	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;
-	TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Reset;   /// !!!
-	TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Reset; /// !!!
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_Low;
+	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_Low;
+	TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Set;	 /// !!!
+	TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Set; /// !!!
 
 	TIM_OCInitStructure.TIM_Pulse = sin_tbl_a[0];
 	TIM_OC1Init(TIM1, &TIM_OCInitStructure);
@@ -114,12 +120,17 @@ void sin_pwm_init(void)
 	TIM_OCInitStructure.TIM_Pulse = sin_tbl_c[0];
 	TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 
+	// Update CCRx only on update event (now it's underflow)
+	TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
+	TIM_OC2PreloadConfig(TIM1, TIM_OCPreload_Enable);
+	TIM_OC3PreloadConfig(TIM1, TIM_OCPreload_Enable);
+
 	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Enable;
 	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Enable;
 	TIM_BDTRInitStructure.TIM_LOCKLevel = TIM_LOCKLevel_OFF;
 
 	// DeadTime[ns] = value * (1/SystemCoreFreq) (on 72MHz: 7 is 98ns)
-	TIM_BDTRInitStructure.TIM_DeadTime = DEAD_TIME;
+	TIM_BDTRInitStructure.TIM_DeadTime = 0;
 
 	TIM_BDTRInitStructure.TIM_AutomaticOutput = TIM_AutomaticOutput_Disable;
 
@@ -134,9 +145,13 @@ void sin_pwm_init(void)
 	TIM_ClearFlag(TIM1, TIM_IT_Update);
 	TIM_ITConfig(TIM1, TIM_IT_Update, ENABLE);
 
+	// TIM_ClearFlag(TIM1, TIM_IT_CC1);
+	// TIM_ITConfig(TIM1, TIM_IT_CC1, ENABLE);
+
 	/* Enable the TIM1_IRQn Interrupt */
 	NVIC_InitTypeDef NVIC_InitStructure;
 	NVIC_InitStructure.NVIC_IRQChannel = TIM1_UP_IRQn;
+	// NVIC_InitStructure.NVIC_IRQChannel = TIM1_CC_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;

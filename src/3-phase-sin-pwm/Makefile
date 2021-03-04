@@ -1,8 +1,8 @@
 # path to STM32F103 standard peripheral library
-STD_PERIPH_LIBS ?= ./STM32F10x_StdPeriph_Lib_V3.5.0
+STD_PERIPH_LIBS = /home/fedor/workspace/stm32/bldc-driver/libs
 
 # list of source files
-SOURCES  = src/main.c
+SOURCES  = main.c
 SOURCES += $(STD_PERIPH_LIBS)/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c
 SOURCES += $(STD_PERIPH_LIBS)/STM32F10x_StdPeriph_Driver/src/stm32f10x_rcc.c
 SOURCES += $(STD_PERIPH_LIBS)/STM32F10x_StdPeriph_Driver/src/stm32f10x_gpio.c
@@ -15,7 +15,7 @@ SOURCES += $(STD_PERIPH_LIBS)/STM32F10x_StdPeriph_Driver/src/misc.c
 SOURCES += $(STD_PERIPH_LIBS)/CMSIS/CM3/DeviceSupport/ST/STM32F10x/startup/TrueSTUDIO/startup_stm32f10x_md.s
 
 # name for output binary files
-PROJECT ?= bldc-driver
+PROJECT ?= 3-phase-sin-pwm
 
 # compiler, objcopy (should be in PATH)
 CC = arm-none-eabi-gcc

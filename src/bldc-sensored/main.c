@@ -120,7 +120,7 @@ void tim1_init()
 	GPIO_InitTypeDef GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
 	//initialize Tim1 PWM outputs
@@ -139,24 +139,24 @@ void tim1_init()
 	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
 
 	// Channel 1, 2, 3 – set to PWM mode - all 6 outputs
-	TIM_OCInitTypeDef TIM_OCInitStructure;
-	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
-	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Disable;
-	TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Disable;
-	TIM_OCInitStructure.TIM_Pulse = (int)(BLDC_CHOPPER_PERIOD * 0.1);
+	// TIM_OCInitTypeDef TIM_OCInitStructure;
+	// TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
+	// TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+	// TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
+	// TIM_OCInitStructure.TIM_Pulse = (int)(BLDC_CHOPPER_PERIOD * 0.1);
 
-	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_Low;
-	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;
-	TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Reset;   /// !!!
-	TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Reset; /// !!!
+	// TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+	// TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;
+	// TIM_OCInitStructure.TIM_OCIdleState = TIM_OCIdleState_Reset;   /// !!!
+	// TIM_OCInitStructure.TIM_OCNIdleState = TIM_OCNIdleState_Reset; /// !!!
 
-	TIM_OC1Init(TIM1, &TIM_OCInitStructure);
-	TIM_OC2Init(TIM1, &TIM_OCInitStructure);
-	TIM_OC3Init(TIM1, &TIM_OCInitStructure);
+	// TIM_OC1Init(TIM1, &TIM_OCInitStructure);
+	// TIM_OC2Init(TIM1, &TIM_OCInitStructure);
+	// TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 
 	TIM_BDTRInitTypeDef TIM_BDTRInitStructure;
-	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Enable;
-	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Enable;
+	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Disable;
+	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Disable;
 	TIM_BDTRInitStructure.TIM_LOCKLevel = TIM_LOCKLevel_OFF;
 
 	// DeadTime[ns] = value * (1/SystemCoreFreq) (on 72MHz: 7 is 98ns)
@@ -247,49 +247,50 @@ void EXTI4_IRQHandler(void)
 
 void commutate(uint16_t hallpos)
 {
-	switch (phase)
+	// Hall_CBA
+	switch (hallpos)
 	{
-	case 0: // phase AB
+	case 0b101: // phase AB
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
-		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
+		TIM1->CCMR1 = 0x4868; // B low, A PWM
+		TIM1->CCMR2 = 0x6858; // force C ref high (phc en low)
 		break;
-	case 1: // phase AC
+	case 0b001: // phase AC
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
-		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		TIM1->CCMR1 = 0x5868; // force B high and A PWM
+		TIM1->CCMR2 = 0x6848; // force C ref low
 		break;
-	case 2: // phase BC
+	case 0b011: // phase BC
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
-		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		TIM1->CCMR1 = 0x6858; // force B PWM and A high
+		TIM1->CCMR2 = 0x6848; // force C ref low
 		break;
-	case 3: // phase BA
+	case 0b010: // phase BA
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
-		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
+		TIM1->CCMR1 = 0x6848; // force B PWM and A ref low
+		TIM1->CCMR2 = 0x6858; // force C ref high
 		break;
-	case 4: // phase CA
+	case 0b110: // phase CA
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
-		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		TIM1->CCMR1 = 0x5848;					   // force B high and A ref low
+		TIM1->CCMR2 = 0x6868;					   // force C PWM
 		break;
-	case 5: // phase CB
+	case 0b100: // phase CB
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x4858 + b15 + b7;		   // force B low and A high
-		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		TIM1->CCMR1 = 0x4858;					   // force B low and A high
+		TIM1->CCMR2 = 0x6868;					   // force C PWM
 		break;
 	} // end of phase switch statement
 }
@@ -356,20 +357,20 @@ int main(void)
 	delay(5000000); //let power supply settle
 
 	led_init();
-	tim1_init();
 	HallSensorsInit();
 
 	phase = 0;
 
 	// // tim1 setup
+	tim1_init();
 	// TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low
-	// TIM1->CR2 = 0;
-	// TIM1->CCR1 = 200;
-	// TIM1->CCR2 = 200;
-	// TIM1->CCR3 = 200;
+	TIM1->CR2 = 0;
+	TIM1->CCR1 = 450;
+	TIM1->CCR2 = 450;
+	TIM1->CCR3 = 450;
 	// TIM1->CCR4 = 1100;
 	// TIM1->ARR = 1200;
-	// TIM1->CR1 = 0x0001;
+	TIM1->CR1 = 0x0001;
 
 	// // note: b15 b7 and b7 are to enable ETR  based current limit
 	// TIM1->CCMR1 = 0x6868 + b15 + b7;
@@ -377,6 +378,8 @@ int main(void)
 	// // b4 for cc4 and b7 for brk interrupt
 	// //TIM1->DIER = b4+b7;  // enable cc4 interrupt
 	// TIM1->DIER = b4 + b6;
+	TIM1->CCMR1 = 0x6868;
+	TIM1->CCMR2 = 0x6868;
 
 	while (1)
 	{ // backgroung loop

@@ -152,11 +152,6 @@ void tim1_init()
 	TIM_OC2Init(TIM1, &TIM_OCInitStructure);
 	TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 
-	// Update CCRx only on update event
-	TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
-	TIM_OC2PreloadConfig(TIM1, TIM_OCPreload_Enable);
-	TIM_OC3PreloadConfig(TIM1, TIM_OCPreload_Enable);
-
 	TIM_BDTRInitTypeDef TIM_BDTRInitStructure;
 	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Enable;
 	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Enable;
@@ -178,12 +173,12 @@ void tim1_init()
 	TIM_CtrlPWMOutputs(TIM1, ENABLE);
 }
 
-uint8_t BLDC_HallSensorsGetPosition(void)
+uint8_t HallSensorsGetPosition(void)
 {
 	return (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_4 | GPIO_Pin_6 | GPIO_Pin_7)) >> 7);
 }
 
-void BLDC_HallSensorsInit(void)
+void HallSensorsInit(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
 	EXTI_InitTypeDef EXTI_InitStruct;
@@ -225,8 +220,12 @@ void EXTI9_5_IRQHandler(void)
 		EXTI_ClearITPendingBit(EXTI_Line7);
 
 		// Commutation
-		BLDC_MotorCommutation(BLDC_HallSensorsGetPosition());
+		comutate(HallSensorsGetPosition());
 	}
+}
+
+void commutate()
+{
 }
 
 int main(void)

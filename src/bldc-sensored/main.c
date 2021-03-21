@@ -9,7 +9,7 @@
 #include "misc.h"
 #include <math.h>
 
-// #include "definitions.h"
+#include "definitions.h"
 // #include "motorcontrolsettings.h"
 
 // PWM Frequency = 72000000/BLDC_CHOPPER_PERIOD
@@ -28,6 +28,8 @@ unsigned short runningdc;
 unsigned short potvalue;
 
 void delay(unsigned long time);
+void commutate(uint16_t hallpos);
+void commutate2(uint16_t hallpos);
 
 void SetSysClockTo72(void)
 {
@@ -175,7 +177,10 @@ void tim1_init()
 
 uint8_t HallSensorsGetPosition(void)
 {
-	return (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_4 | GPIO_Pin_6 | GPIO_Pin_7)) >> 7);
+	uint8_t res6_7 = (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_6 | GPIO_Pin_7)) >> 5);
+	uint8_t res4 = (uint8_t)((GPIO_ReadInputData(GPIOB) & GPIO_Pin_4) >> 4);
+	uint8_t res = res6_7 | res4;
+	return res;
 }
 
 void HallSensorsInit(void)
@@ -191,10 +196,12 @@ void HallSensorsInit(void)
 	GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 	// Init NVIC
-	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn | EXTI4_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStruct);
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI4_IRQn;
 	NVIC_Init(&NVIC_InitStruct);
 
 	// Tell system that you will use EXTI_Lines */
@@ -212,7 +219,7 @@ void HallSensorsInit(void)
 
 void EXTI9_5_IRQHandler(void)
 {
-	if ((EXTI_GetITStatus(EXTI_Line4) | EXTI_GetITStatus(EXTI_Line6) | EXTI_GetITStatus(EXTI_Line7)) != RESET)
+	if ((EXTI_GetITStatus(EXTI_Line6) | EXTI_GetITStatus(EXTI_Line7)) != RESET)
 	{
 		// Clear interrupt flags
 		EXTI_ClearITPendingBit(EXTI_Line4);
@@ -220,12 +227,120 @@ void EXTI9_5_IRQHandler(void)
 		EXTI_ClearITPendingBit(EXTI_Line7);
 
 		// Commutation
-		comutate(HallSensorsGetPosition());
+		commutate(HallSensorsGetPosition());
 	}
 }
 
-void commutate()
+void EXTI4_IRQHandler(void)
 {
+	if (EXTI_GetITStatus(EXTI_Line4) != RESET)
+	{
+		// Clear interrupt flags
+		EXTI_ClearITPendingBit(EXTI_Line4);
+		EXTI_ClearITPendingBit(EXTI_Line6);
+		EXTI_ClearITPendingBit(EXTI_Line7);
+
+		// Commutation
+		commutate(HallSensorsGetPosition());
+	}
+}
+
+void commutate(uint16_t hallpos)
+{
+	switch (phase)
+	{
+	case 0: // phase AB
+		// enable all 6 except AN
+		// invert AN
+		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
+		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
+		break;
+	case 1: // phase AC
+		// enable all 6 except AN
+		// invert AN
+		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
+		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		break;
+	case 2: // phase BC
+		// enable all 6 except BN
+		// invert BN
+		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
+		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		break;
+	case 3: // phase BA
+		// enable all 6 except BN
+		// invert BN
+		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
+		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
+		break;
+	case 4: // phase CA
+		// enable all 6 except CN
+		// invert CN
+		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
+		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		break;
+	case 5: // phase CB
+		// enable all 6 except CN
+		// invert CN
+		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
+		TIM1->CCMR1 = 0x4858 + b15 + b7;		   // force B low and A high
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		break;
+	} // end of phase switch statement
+}
+
+void commutate2(uint16_t hallpos)
+{
+	switch (phase)
+	{
+	case 0: // phase AB
+		// enable all 6 except AN
+		// invert AN
+		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
+		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
+		break;
+	case 1: // phase AC
+		// enable all 6 except AN
+		// invert AN
+		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
+		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		break;
+	case 2: // phase BC
+		// enable all 6 except BN
+		// invert BN
+		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
+		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
+		break;
+	case 3: // phase BA
+		// enable all 6 except BN
+		// invert BN
+		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
+		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
+		break;
+	case 4: // phase CA
+		// enable all 6 except CN
+		// invert CN
+		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
+		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		break;
+	case 5: // phase CB
+		// enable all 6 except CN
+		// invert CN
+		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
+		TIM1->CCMR1 = 0x4858 + b15 + b7;		   // force B low and A high
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
+		break;
+	} // end of phase switch statement
 }
 
 int main(void)
@@ -240,7 +355,11 @@ int main(void)
 
 	delay(5000000); //let power supply settle
 
+	led_init();
 	tim1_init();
+	HallSensorsInit();
+
+	phase = 0;
 
 	// // tim1 setup
 	// TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low

@@ -141,7 +141,7 @@ void tim1_init()
 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
 	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Disable;
 	TIM_OCInitStructure.TIM_OutputNState = TIM_OutputNState_Disable;
-	TIM_OCInitStructure.TIM_Pulse = (int)(BLDC_CHOPPER_PERIOD / 2);
+	TIM_OCInitStructure.TIM_Pulse = (int)(BLDC_CHOPPER_PERIOD * 0.1);
 
 	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_Low;
 	TIM_OCInitStructure.TIM_OCNPolarity = TIM_OCNPolarity_High;

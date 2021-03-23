@@ -102,25 +102,17 @@ void led_init()
 
 	//GPIO_SetBits(GPIOC, GPIO_Pin_13); // Set C13 to High level ("1")
 	GPIO_ResetBits(GPIOC, GPIO_Pin_13); // Set C13 to Low level ("0")
-
-	/* Initialize Button input PB0 */
-	// Enable PORTB Clock
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	/* Configure the GPIO_BUTTON pin */
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
 }
 void tim1_init()
 {
-	// PWM on lowside transistors
-
 	// PB13-15 will be normal gpio
 	GPIO_InitTypeDef GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
 	//initialize Tim1 PWM outputs
@@ -129,14 +121,17 @@ void tim1_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-	// Time Base configuration
-	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
-	TIM_TimeBaseStructure.TIM_Prescaler = 0;
-	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
-	TIM_TimeBaseStructure.TIM_Period = BLDC_CHOPPER_PERIOD;
-	TIM_TimeBaseStructure.TIM_ClockDivision = 0;
-	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
-	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	// // Time Base configuration
+	// TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	// TIM_TimeBaseStructure.TIM_Prescaler = 0;
+	// TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	// TIM_TimeBaseStructure.TIM_Period = BLDC_CHOPPER_PERIOD;
+	// TIM_TimeBaseStructure.TIM_ClockDivision = 0;
+	// TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
+	// TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
 
 	// Channel 1, 2, 3 – set to PWM mode - all 6 outputs
 	// TIM_OCInitTypeDef TIM_OCInitStructure;
@@ -154,25 +149,25 @@ void tim1_init()
 	// TIM_OC2Init(TIM1, &TIM_OCInitStructure);
 	// TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 
-	TIM_BDTRInitTypeDef TIM_BDTRInitStructure;
-	TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Disable;
-	TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Disable;
-	TIM_BDTRInitStructure.TIM_LOCKLevel = TIM_LOCKLevel_OFF;
+	// TIM_BDTRInitTypeDef TIM_BDTRInitStructure;
+	// TIM_BDTRInitStructure.TIM_OSSRState = TIM_OSSRState_Disable;
+	// TIM_BDTRInitStructure.TIM_OSSIState = TIM_OSSIState_Disable;
+	// TIM_BDTRInitStructure.TIM_LOCKLevel = TIM_LOCKLevel_OFF;
 
 	// DeadTime[ns] = value * (1/SystemCoreFreq) (on 72MHz: 7 is 98ns)
-	TIM_BDTRInitStructure.TIM_DeadTime = 0;
+	// TIM_BDTRInitStructure.TIM_DeadTime = 0;
 
-	TIM_BDTRInitStructure.TIM_AutomaticOutput = TIM_AutomaticOutput_Disable;
+	// TIM_BDTRInitStructure.TIM_AutomaticOutput = TIM_AutomaticOutput_Disable;
 
-	// Break functionality (overload input)
-	TIM_BDTRInitStructure.TIM_Break = TIM_Break_Enable;
-	TIM_BDTRInitStructure.TIM_BreakPolarity = TIM_BreakPolarity_Low;
+	// // Break functionality (overload input)
+	// TIM_BDTRInitStructure.TIM_Break = TIM_Break_Enable;
+	// TIM_BDTRInitStructure.TIM_BreakPolarity = TIM_BreakPolarity_Low;
 
-	TIM_BDTRConfig(TIM1, &TIM_BDTRInitStructure);
+	// TIM_BDTRConfig(TIM1, &TIM_BDTRInitStructure);
 
-	TIM_Cmd(TIM1, ENABLE);
-	// enable motor timer main output (the bridge signals)
-	TIM_CtrlPWMOutputs(TIM1, ENABLE);
+	// TIM_Cmd(TIM1, ENABLE);
+	// // enable motor timer main output (the bridge signals)
+	// TIM_CtrlPWMOutputs(TIM1, ENABLE);
 }
 
 uint8_t HallSensorsGetPosition(void)
@@ -254,43 +249,43 @@ void commutate(uint16_t hallpos)
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x4868; // B low, A PWM
-		TIM1->CCMR2 = 0x6858; // force C ref high (phc en low)
+		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
 		break;
 	case 0b001: // phase AC
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x5868; // force B high and A PWM
-		TIM1->CCMR2 = 0x6848; // force C ref low
+		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
 		break;
 	case 0b011: // phase BC
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6858; // force B PWM and A high
-		TIM1->CCMR2 = 0x6848; // force C ref low
+		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
+		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
 		break;
 	case 0b010: // phase BA
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6848; // force B PWM and A ref low
-		TIM1->CCMR2 = 0x6858; // force C ref high
+		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
+		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
 		break;
 	case 0b110: // phase CA
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x5848;					   // force B high and A ref low
-		TIM1->CCMR2 = 0x6868;					   // force C PWM
+		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
 		break;
 	case 0b100: // phase CB
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x4858;					   // force B low and A high
-		TIM1->CCMR2 = 0x6868;					   // force C PWM
+		TIM1->CCMR1 = 0x4858 + b15 + b7;		   // force B low and A high
+		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
 		break;
 	} // end of phase switch statement
 }
@@ -344,6 +339,17 @@ void commutate2(uint16_t hallpos)
 	} // end of phase switch statement
 }
 
+void motorstartinit(void)
+{
+	TIM1->CCER = 0;
+
+	// b12 to enable brk input
+	// b13 for break polarity
+	// (b15+b11); set MOE
+
+	TIM1->BDTR = b15 + b11 + b10 + b12 + b13; //set MOE
+}
+
 int main(void)
 {
 	// clock setup
@@ -363,23 +369,23 @@ int main(void)
 
 	// // tim1 setup
 	tim1_init();
-	// TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low
+	TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low
 	TIM1->CR2 = 0;
 	TIM1->CCR1 = 450;
 	TIM1->CCR2 = 450;
 	TIM1->CCR3 = 450;
 	// TIM1->CCR4 = 1100;
-	// TIM1->ARR = 1200;
+	TIM1->ARR = BLDC_CHOPPER_PERIOD;
 	TIM1->CR1 = 0x0001;
 
-	// // note: b15 b7 and b7 are to enable ETR  based current limit
-	// TIM1->CCMR1 = 0x6868 + b15 + b7;
-	// TIM1->CCMR2 = 0x6868 + b7;
+	// note: b15 b7 and b7 are to enable ETR  based current limit
+	TIM1->CCMR1 = 0x6868 + b15 + b7;
+	TIM1->CCMR2 = 0x6868 + b7;
 	// // b4 for cc4 and b7 for brk interrupt
 	// //TIM1->DIER = b4+b7;  // enable cc4 interrupt
-	// TIM1->DIER = b4 + b6;
-	TIM1->CCMR1 = 0x6868;
-	TIM1->CCMR2 = 0x6868;
+	TIM1->DIER = b6;
+
+	motorstartinit();
 
 	while (1)
 	{ // backgroung loop

@@ -28,7 +28,7 @@ unsigned short runningdc;
 unsigned short potvalue;
 
 void delay(unsigned long time);
-void commutate(uint16_t hallpos);
+void commutate(void);
 void commutate2(uint16_t hallpos);
 
 void SetSysClockTo72(void)
@@ -116,12 +116,10 @@ void tim1_init()
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
 	//initialize Tim1 PWM outputs
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+	// pin_12 for etr current chopping
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_12;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
 
 	// // Time Base configuration
@@ -170,12 +168,43 @@ void tim1_init()
 	// TIM_CtrlPWMOutputs(TIM1, ENABLE);
 }
 
-uint8_t HallSensorsGetPosition(void)
+void tim4_init(void)
 {
 	uint8_t res6_7 = (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_6 | GPIO_Pin_7)) >> 5);
 	uint8_t res4 = (uint8_t)((GPIO_ReadInputData(GPIOB) & GPIO_Pin_4) >> 4);
 	uint8_t res = res6_7 | res4;
 	return res;
+void HallSensorsGetPosition(void)
+{
+	// uint8_t res6_7 = (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_6 | GPIO_Pin_7)) >> 5);
+	// uint8_t res4 = (uint8_t)((GPIO_ReadInputData(GPIOB) & GPIO_Pin_4) >> 4);
+	// uint8_t hallpos = res6_7 | res4;
+	uint8_t hallpos = (uint8_t)((GPIO_ReadInputData(GPIOB) & (GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9)) >> 7);
+	switch (hallpos)
+	{
+	case 0b101:
+		phase = 0;
+		break;
+	case 0b001:
+		phase = 1;
+		break;
+	case 0b011:
+		phase = 2;
+		break;
+	case 0b010:
+		phase = 3;
+		break;
+	case 0b110:
+		phase = 4;
+		break;
+	case 0b100:
+		phase = 5;
+		break;
+
+	default:
+		phase = 0;
+		break;
+	}
 }
 
 void HallSensorsInit(void)
@@ -185,7 +214,7 @@ void HallSensorsInit(void)
 	NVIC_InitTypeDef NVIC_InitStruct;
 
 	// Init GPIO
-	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9;
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;
 	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
 	GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -196,16 +225,14 @@ void HallSensorsInit(void)
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStruct);
-	NVIC_InitStruct.NVIC_IRQChannel = EXTI4_IRQn;
-	NVIC_Init(&NVIC_InitStruct);
 
 	// Tell system that you will use EXTI_Lines */
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource4);
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource6);
 	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource7);
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource8);
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource9);
 
 	// EXTI
-	EXTI_InitStruct.EXTI_Line = EXTI_Line4 | EXTI_Line6 | EXTI_Line7;
+	EXTI_InitStruct.EXTI_Line = EXTI_Line7 | EXTI_Line8 | EXTI_Line9;
 	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
 	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
 	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
@@ -214,73 +241,75 @@ void HallSensorsInit(void)
 
 void EXTI9_5_IRQHandler(void)
 {
-	if ((EXTI_GetITStatus(EXTI_Line6) | EXTI_GetITStatus(EXTI_Line7)) != RESET)
+	if ((EXTI_GetITStatus(EXTI_Line7) | EXTI_GetITStatus(EXTI_Line8) | EXTI_GetITStatus(EXTI_Line9)) != RESET)
 	{
 		// Clear interrupt flags
-		EXTI_ClearITPendingBit(EXTI_Line4);
-		EXTI_ClearITPendingBit(EXTI_Line6);
 		EXTI_ClearITPendingBit(EXTI_Line7);
+		EXTI_ClearITPendingBit(EXTI_Line8);
+		EXTI_ClearITPendingBit(EXTI_Line9);
 
 		// Commutation
-		commutate(HallSensorsGetPosition());
+		HallSensorsGetPosition();
+		commutate();
 	}
 }
 
-void EXTI4_IRQHandler(void)
-{
-	if (EXTI_GetITStatus(EXTI_Line4) != RESET)
-	{
-		// Clear interrupt flags
-		EXTI_ClearITPendingBit(EXTI_Line4);
-		EXTI_ClearITPendingBit(EXTI_Line6);
-		EXTI_ClearITPendingBit(EXTI_Line7);
+// void EXTI4_IRQHandler(void)
+// {
+// 	if (EXTI_GetITStatus(EXTI_Line4) != RESET)
+// 	{
+// 		// Clear interrupt flags
+// 		EXTI_ClearITPendingBit(EXTI_Line4);
+// 		EXTI_ClearITPendingBit(EXTI_Line6);
+// 		EXTI_ClearITPendingBit(EXTI_Line7);
 
-		// Commutation
-		commutate(HallSensorsGetPosition());
-	}
-}
+// 		// Commutation
+// 		HallSensorsGetPosition();
+// 		commutate();
+// 	}
+// }
 
-void commutate(uint16_t hallpos)
+void commutate(void)
 {
 	// Hall_CBA
-	switch (hallpos)
+	switch (phase)
 	{
-	case 0b101: // phase AB
+	case 0: // phase AB
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
 		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
 		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
 		break;
-	case 0b001: // phase AC
+	case 1: // phase AC
 		// enable all 6 except AN
 		// invert AN
 		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
 		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
 		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
 		break;
-	case 0b011: // phase BC
+	case 2: // phase BC
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
 		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
 		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
 		break;
-	case 0b010: // phase BA
+	case 3: // phase BA
 		// enable all 6 except BN
 		// invert BN
 		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
 		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
 		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
 		break;
-	case 0b110: // phase CA
+	case 4: // phase CA
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
 		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
 		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
 		break;
-	case 0b100: // phase CB
+	case 5: // phase CB
 		// enable all 6 except CN
 		// invert CN
 		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
@@ -343,10 +372,12 @@ void motorstartinit(void)
 {
 	TIM1->CCER = 0;
 
+	HallSensorsGetPosition();
+	commutate();
+
 	// b12 to enable brk input
 	// b13 for break polarity
 	// (b15+b11); set MOE
-
 	TIM1->BDTR = b15 + b11 + b10 + b12 + b13; //set MOE
 }
 
@@ -371,9 +402,9 @@ int main(void)
 	tim1_init();
 	TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low
 	TIM1->CR2 = 0;
-	TIM1->CCR1 = 450;
-	TIM1->CCR2 = 450;
-	TIM1->CCR3 = 450;
+	TIM1->CCR1 = 1350;
+	TIM1->CCR2 = 1350;
+	TIM1->CCR3 = 1350;
 	// TIM1->CCR4 = 1100;
 	TIM1->ARR = BLDC_CHOPPER_PERIOD;
 	TIM1->CR1 = 0x0001;

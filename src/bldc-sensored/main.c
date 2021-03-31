@@ -117,16 +117,21 @@ void tim1_init()
 
 	//initialize Tim1 PWM outputs
 	// pin_12 for etr current chopping
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_12;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
 
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
 	TIM1->SMCR = b15 + b4 + b5 + b6; // make ETR input active low
 	TIM1->CR2 = 0;
-	TIM1->CCR1 = 1350;
-	TIM1->CCR2 = 1350;
-	TIM1->CCR3 = 1350;
+	uint16_t init = 350;
+	TIM1->CCR1 = init;
+	TIM1->CCR2 = init;
+	TIM1->CCR3 = init;
 	// TIM1->CCR4 = 1100;
 	TIM1->ARR = BLDC_CHOPPER_PERIOD;
 	TIM1->CR1 = 0x0001;
@@ -348,9 +353,12 @@ int main(void)
 
 	phase = 0;
 
-	// // tim1 setup
+	// tim1 setup
 	tim1_init();
 
+	delay(5000000); //let power supply settle
+	delay(5000000); //let power supply settle
+	delay(5000000); //let power supply settle
 	motorstartinit();
 
 	while (1)

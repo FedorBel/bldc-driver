@@ -141,6 +141,37 @@ void tim1_init()
 	// // b4 for cc4 and b7 for brk interrupt
 	// //TIM1->DIER = b4+b7;  // enable cc4 interrupt
 	TIM1->DIER = b6;
+
+	TIM_ClearFlag(TIM1, TIM_IT_Update);
+	TIM_ITConfig(TIM1, TIM_IT_Update, ENABLE);
+
+	/* Enable the TIM1_IRQn Interrupt */
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_InitStructure.NVIC_IRQChannel = TIM1_UP_IRQn;
+	// NVIC_InitStructure.NVIC_IRQChannel = TIM1_CC_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+}
+
+uint16_t adc_to_pwm(uint16_t adc_raw)
+{
+	uint16_t result = adc_raw * BLDC_CHOPPER_PERIOD / 4096;
+	return result;
+}
+
+void TIM1_UP_IRQHandler(void)
+{
+	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
+	{
+		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
+		uint16_t adc_raw = ADC_GetConversionValue(ADC1);
+		uint16_t pwm = adc_to_pwm(adc_raw);
+		TIM1->CCR1 = pwm;
+		TIM1->CCR2 = pwm;
+		TIM1->CCR3 = pwm;
+	}
 }
 
 void usart3_init(void)
@@ -214,6 +245,47 @@ void USARTSend(const unsigned char *pucBuffer)
 		{
 		}
 	}
+}
+
+void adc_init(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	// input of ADC (it doesn't seem to be needed, as default GPIO state is floating input)
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4; // that's ADC1 (PA4 on STM32)
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	//clock for ADC (max 14MHz --> 72/6=12MHz)
+	RCC_ADCCLKConfig(RCC_PCLK2_Div6);
+	// enable ADC system clock
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+
+	// define ADC config
+	ADC_InitTypeDef ADC_InitStructure;
+	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
+	ADC_InitStructure.ADC_ScanConvMode = DISABLE;
+	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE; // we work in continuous sampling mode
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_NbrOfChannel = 1;
+
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_4, 1, ADC_SampleTime_28Cycles5); // define regular conversion config
+	ADC_Init(ADC1, &ADC_InitStructure);											//set config of ADC1
+
+	// enable ADC
+	ADC_Cmd(ADC1, ENABLE); //enable ADC1
+
+	//  ADC calibration (optional, but recommended at power on)
+	ADC_ResetCalibration(ADC1); // Reset previous calibration
+	while (ADC_GetResetCalibrationStatus(ADC1))
+		;
+	ADC_StartCalibration(ADC1); // Start new calibration (ADC must be off at that time)
+	while (ADC_GetCalibrationStatus(ADC1))
+		;
+
+	// start conversion
+	ADC_Cmd(ADC1, ENABLE);					//enable ADC1
+	ADC_SoftwareStartConvCmd(ADC1, ENABLE); // start conversion (will be endless as we are in continuous mode)
 }
 
 void HallSensorsGetPosition(void)
@@ -430,6 +502,7 @@ int main(void)
 
 	// tim1 setup
 	tim1_init();
+	adc_init();
 
 #ifdef _DEBUG
 	usart3_init();

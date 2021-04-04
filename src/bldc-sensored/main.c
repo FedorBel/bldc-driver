@@ -16,10 +16,6 @@
 
 // PWM Frequency = 72000000/BLDC_CHOPPER_PERIOD
 #define BLDC_CHOPPER_PERIOD 4500
-// Dead time = BLDC_NOL/72000000  (on 72MHz: 7 is 98ns)
-// (on 72MHz: 72 is 1000ns)
-//#define BLDC_NOL 72
-// #define BLDC_NOL 72
 
 unsigned char phase;
 unsigned char run;

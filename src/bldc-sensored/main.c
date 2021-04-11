@@ -12,7 +12,6 @@
 #define _DEBUG
 
 #include "definitions.h"
-// #include "motorcontrolsettings.h"
 
 // PWM Frequency = 72000000/BLDC_CHOPPER_PERIOD
 #define BLDC_CHOPPER_PERIOD 4500
@@ -25,9 +24,82 @@ unsigned short step;
 unsigned short runningdc;
 unsigned short potvalue;
 
+// init functions
+// ==================================
+void SetSysClockTo72(void);
+void led_init();
+void tim1_init();
+void HallSensorsInit(void);
+void adc_init(void);
+// ==================================
+
+// usart debugging
+// ==================================
+void usart3_init(void);
+void USARTSend(const unsigned char *pucBuffer);
+// ==================================
+
+// user functions
+// ==================================
 void delay(unsigned long time);
+void HallSensorsGetPosition(void);
 void commutate(void);
-void commutate2(uint16_t hallpos);
+void motorstartinit(void);
+uint16_t adc_to_pwm(uint16_t adc_raw);
+// ==================================
+
+// interrupt handlers
+// ==================================
+void TIM1_UP_IRQHandler(void);
+void EXTI9_5_IRQHandler(void);
+// ==================================
+
+int main(void)
+{
+	// clock setup
+	SetSysClockTo72();
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC | RCC_APB2Periph_TIM1 | RCC_APB2Periph_AFIO,
+						   ENABLE);
+	// RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+
+	//**********************************************
+
+	delay(5000000); //let power supply settle
+
+	led_init();
+	HallSensorsInit();
+
+	phase = 0;
+
+	// tim1 setup
+	tim1_init();
+	adc_init();
+
+#ifdef _DEBUG
+	usart3_init();
+#endif
+
+	delay(5000000); //let power supply settle
+	delay(5000000); //let power supply settle
+	delay(5000000); //let power supply settle
+	motorstartinit();
+
+	while (1)
+	{ // backgroung loop
+		//TIM1->BDTR= b15+b11+b10+b12+b13;  //  set MOE
+
+		if ((4095 - potvalue) > 200)
+			run = 255;
+		if ((4095 - potvalue) < 100)
+			run = 0;
+
+		// if (run)
+		// 	ledon;
+		// if (run == 0)
+		// 	ledoff;
+	} // end of backgroung loop
+
+} // end of main
 
 void SetSysClockTo72(void)
 {
@@ -155,23 +227,77 @@ void tim1_init()
 	NVIC_Init(&NVIC_InitStructure);
 }
 
-uint16_t adc_to_pwm(uint16_t adc_raw)
+void HallSensorsInit(void)
 {
-	uint16_t result = adc_raw * BLDC_CHOPPER_PERIOD / 4096;
-	return result;
+	GPIO_InitTypeDef GPIO_InitStruct;
+	EXTI_InitTypeDef EXTI_InitStruct;
+	NVIC_InitTypeDef NVIC_InitStruct;
+
+	// Init GPIO
+	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9;
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	// Init NVIC
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStruct);
+
+	// Tell system that you will use EXTI_Lines */
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource7);
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource8);
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource9);
+
+	// EXTI
+	EXTI_InitStruct.EXTI_Line = EXTI_Line7 | EXTI_Line8 | EXTI_Line9;
+	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+	EXTI_Init(&EXTI_InitStruct);
 }
 
-void TIM1_UP_IRQHandler(void)
+void adc_init(void)
 {
-	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
-	{
-		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
-		uint16_t adc_raw = ADC_GetConversionValue(ADC1);
-		uint16_t pwm = adc_to_pwm(adc_raw);
-		TIM1->CCR1 = pwm;
-		TIM1->CCR2 = pwm;
-		TIM1->CCR3 = pwm;
-	}
+	GPIO_InitTypeDef GPIO_InitStructure;
+	// input of ADC (it doesn't seem to be needed, as default GPIO state is floating input)
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4; // that's ADC1 (PA4 on STM32)
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	//clock for ADC (max 14MHz --> 72/6=12MHz)
+	RCC_ADCCLKConfig(RCC_PCLK2_Div6);
+	// enable ADC system clock
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+
+	// define ADC config
+	ADC_InitTypeDef ADC_InitStructure;
+	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
+	ADC_InitStructure.ADC_ScanConvMode = DISABLE;
+	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE; // we work in continuous sampling mode
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_NbrOfChannel = 1;
+
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_4, 1, ADC_SampleTime_28Cycles5); // define regular conversion config
+	ADC_Init(ADC1, &ADC_InitStructure);											//set config of ADC1
+
+	// enable ADC
+	ADC_Cmd(ADC1, ENABLE); //enable ADC1
+
+	//  ADC calibration (optional, but recommended at power on)
+	ADC_ResetCalibration(ADC1); // Reset previous calibration
+	while (ADC_GetResetCalibrationStatus(ADC1))
+		;
+	ADC_StartCalibration(ADC1); // Start new calibration (ADC must be off at that time)
+	while (ADC_GetCalibrationStatus(ADC1))
+		;
+
+	// start conversion
+	ADC_Cmd(ADC1, ENABLE);					//enable ADC1
+	ADC_SoftwareStartConvCmd(ADC1, ENABLE); // start conversion (will be endless as we are in continuous mode)
 }
 
 void usart3_init(void)
@@ -247,45 +373,10 @@ void USARTSend(const unsigned char *pucBuffer)
 	}
 }
 
-void adc_init(void)
+void delay(unsigned long time) // 1000 is 200 usec
 {
-	GPIO_InitTypeDef GPIO_InitStructure;
-	// input of ADC (it doesn't seem to be needed, as default GPIO state is floating input)
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4; // that's ADC1 (PA4 on STM32)
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-	//clock for ADC (max 14MHz --> 72/6=12MHz)
-	RCC_ADCCLKConfig(RCC_PCLK2_Div6);
-	// enable ADC system clock
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
-
-	// define ADC config
-	ADC_InitTypeDef ADC_InitStructure;
-	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
-	ADC_InitStructure.ADC_ScanConvMode = DISABLE;
-	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE; // we work in continuous sampling mode
-	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
-	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
-	ADC_InitStructure.ADC_NbrOfChannel = 1;
-
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_4, 1, ADC_SampleTime_28Cycles5); // define regular conversion config
-	ADC_Init(ADC1, &ADC_InitStructure);											//set config of ADC1
-
-	// enable ADC
-	ADC_Cmd(ADC1, ENABLE); //enable ADC1
-
-	//  ADC calibration (optional, but recommended at power on)
-	ADC_ResetCalibration(ADC1); // Reset previous calibration
-	while (ADC_GetResetCalibrationStatus(ADC1))
-		;
-	ADC_StartCalibration(ADC1); // Start new calibration (ADC must be off at that time)
-	while (ADC_GetCalibrationStatus(ADC1))
-		;
-
-	// start conversion
-	ADC_Cmd(ADC1, ENABLE);					//enable ADC1
-	ADC_SoftwareStartConvCmd(ADC1, ENABLE); // start conversion (will be endless as we are in continuous mode)
+	while (time > 0)
+		time--;
 }
 
 void HallSensorsGetPosition(void)
@@ -324,105 +415,9 @@ void HallSensorsGetPosition(void)
 #endif
 }
 
-void HallSensorsInit(void)
-{
-	GPIO_InitTypeDef GPIO_InitStruct;
-	EXTI_InitTypeDef EXTI_InitStruct;
-	NVIC_InitTypeDef NVIC_InitStruct;
-
-	// Init GPIO
-	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9;
-	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_2MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	// Init NVIC
-	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0x00;
-	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&NVIC_InitStruct);
-
-	// Tell system that you will use EXTI_Lines */
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource7);
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource8);
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource9);
-
-	// EXTI
-	EXTI_InitStruct.EXTI_Line = EXTI_Line7 | EXTI_Line8 | EXTI_Line9;
-	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
-	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
-	EXTI_Init(&EXTI_InitStruct);
-}
-
-void EXTI9_5_IRQHandler(void)
-{
-	if ((EXTI_GetITStatus(EXTI_Line7) | EXTI_GetITStatus(EXTI_Line8) | EXTI_GetITStatus(EXTI_Line9)) != RESET)
-	{
-		// Clear interrupt flags
-		EXTI_ClearITPendingBit(EXTI_Line7);
-		EXTI_ClearITPendingBit(EXTI_Line8);
-		EXTI_ClearITPendingBit(EXTI_Line9);
-
-		// Commutation
-		HallSensorsGetPosition();
-		commutate();
-	}
-}
-
 void commutate(void)
 {
 	// Hall_CBA
-	switch (phase)
-	{
-	case 0: // phase AB
-		// enable all 6 except AN
-		// invert AN
-		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x4868 + b15 + b7; // B low, A PWM
-		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high (phc en low)
-		break;
-	case 1: // phase AC
-		// enable all 6 except AN
-		// invert AN
-		TIM1->CCER = b10 + b8 + b6 + b4 + b0 + b3;
-		TIM1->CCMR1 = 0x5868 + b15 + b7; // force B high and A PWM
-		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
-		break;
-	case 2: // phase BC
-		// enable all 6 except BN
-		// invert BN
-		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6858 + b15 + b7; // force B PWM and A high
-		TIM1->CCMR2 = 0x6848 + b7;		 // force C ref low
-		break;
-	case 3: // phase BA
-		// enable all 6 except BN
-		// invert BN
-		TIM1->CCER = b10 + b8 + b4 + b2 + b0 + b7;
-		TIM1->CCMR1 = 0x6848 + b15 + b7; // force B PWM and A ref low
-		TIM1->CCMR2 = 0x6858 + b7;		 // force C ref high
-		break;
-	case 4: // phase CA
-		// enable all 6 except CN
-		// invert CN
-		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x5848 + b15 + b7;		   // force B high and A ref low
-		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
-		break;
-	case 5: // phase CB
-		// enable all 6 except CN
-		// invert CN
-		TIM1->CCER = b8 + b6 + b4 + b2 + b0 + b11; // enable all 6 except CN
-		TIM1->CCMR1 = 0x4858 + b15 + b7;		   // force B low and A high
-		TIM1->CCMR2 = 0x6868 + b7;				   // force C PWM
-		break;
-	} // end of phase switch statement
-}
-
-void commutate2(uint16_t hallpos)
-{
 	switch (phase)
 	{
 	case 0: // phase AB
@@ -483,52 +478,39 @@ void motorstartinit(void)
 	TIM1->BDTR = b15 + b11 + b10 + b12 + b13; //set MOE
 }
 
-int main(void)
+uint16_t adc_to_pwm(uint16_t adc_raw)
 {
-	// clock setup
-	SetSysClockTo72();
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC | RCC_APB2Periph_TIM1 | RCC_APB2Periph_AFIO,
-						   ENABLE);
-	// RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	uint16_t result = adc_raw * BLDC_CHOPPER_PERIOD / 4096;
+	return result;
+}
 
-	//**********************************************
+void TIM1_UP_IRQHandler(void)
+{
+	if (TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
+	{
+		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
+		uint16_t adc_raw = ADC_GetConversionValue(ADC1);
+		uint16_t pwm = adc_to_pwm(adc_raw);
+		TIM1->CCR1 = pwm;
+		TIM1->CCR2 = pwm;
+		TIM1->CCR3 = pwm;
+	}
+}
 
-	delay(5000000); //let power supply settle
+void EXTI9_5_IRQHandler(void)
+{
+	if ((EXTI_GetITStatus(EXTI_Line7) | EXTI_GetITStatus(EXTI_Line8) | EXTI_GetITStatus(EXTI_Line9)) != RESET)
+	{
+		// Clear interrupt flags
+		EXTI_ClearITPendingBit(EXTI_Line7);
+		EXTI_ClearITPendingBit(EXTI_Line8);
+		EXTI_ClearITPendingBit(EXTI_Line9);
 
-	led_init();
-	HallSensorsInit();
-
-	phase = 0;
-
-	// tim1 setup
-	tim1_init();
-	adc_init();
-
-#ifdef _DEBUG
-	usart3_init();
-#endif
-
-	delay(5000000); //let power supply settle
-	delay(5000000); //let power supply settle
-	delay(5000000); //let power supply settle
-	motorstartinit();
-
-	while (1)
-	{ // backgroung loop
-		//TIM1->BDTR= b15+b11+b10+b12+b13;  //  set MOE
-
-		if ((4095 - potvalue) > 200)
-			run = 255;
-		if ((4095 - potvalue) < 100)
-			run = 0;
-
-		// if (run)
-		// 	ledon;
-		// if (run == 0)
-		// 	ledoff;
-	} // end of backgroung loop
-
-} // end of main
+		// Commutation
+		HallSensorsGetPosition();
+		commutate();
+	}
+}
 
 // void commutate(void)
 // {
@@ -567,12 +549,6 @@ int main(void)
 // 		break;
 // 	} // end of phase switch statement
 // } // end of commutate function
-
-void delay(unsigned long time) // 1000 is 200 usec
-{
-	while (time > 0)
-		time--;
-}
 
 // unsigned short readadc(unsigned char chnl)
 // {

@@ -481,6 +481,10 @@ void motorstartinit(void)
 uint16_t adc_to_pwm(uint16_t adc_raw)
 {
 	uint16_t result = adc_raw * BLDC_CHOPPER_PERIOD / 4096;
+	if (result > BLDC_CHOPPER_PERIOD)
+	{
+		result = BLDC_CHOPPER_PERIOD;
+	}
 	return result;
 }
 

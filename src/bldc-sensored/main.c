@@ -9,7 +9,7 @@
 #include "misc.h"
 #include <math.h>
 
-#define _DEBUG
+// #define _DEBUG
 
 #include "definitions.h"
 

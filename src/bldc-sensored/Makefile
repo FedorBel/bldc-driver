@@ -25,7 +25,7 @@ OBJCOPY = arm-none-eabi-objcopy
 ST_FLASH ?= st-flash
 
 # specify compiler flags
-CFLAGS  = -DDEBUG -g -Wall -O
+CFLAGS  = -Wall -O3
 CFLAGS += -Tstm32_flash.ld
 CFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m3 -mthumb-interwork
 CFLAGS += -mfloat-abi=soft -mfpu=fpv4-sp-d16

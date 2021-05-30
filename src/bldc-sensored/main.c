@@ -9,12 +9,19 @@
 #include "misc.h"
 #include <math.h>
 
-// #define _DEBUG
+#define _USART_EN
 
 #include "definitions.h"
 
 // PWM Frequency = 72000000/BLDC_CHOPPER_PERIOD
 #define BLDC_CHOPPER_PERIOD 4500
+
+#define SPEED_TIMER_PRESCALER 72
+#define SPEED_TIMER_PERIOD 0xFFFF // 65535
+
+#define HALL_SENSOR_ANGLE_DEG 120							   // [deg]
+#define HALL_SENSOR_ANGLE (HALL_SENSOR_ANGLE_DEG * M_PI / 180) // [rad]
+#define POLES 8
 
 unsigned char phase;
 unsigned char run;
@@ -24,6 +31,10 @@ unsigned short step;
 unsigned short runningdc;
 unsigned short potvalue;
 
+volatile uint16_t speed_raw = 0; // counter ticks
+volatile float speed_koef = POLES * HALL_SENSOR_ANGLE;
+volatile uint16_t to_rpm;
+
 // init functions
 // ==================================
 void SetSysClockTo72(void);
@@ -31,6 +42,8 @@ void led_init();
 void tim1_init();
 void HallSensorsInit(void);
 void adc_init(void);
+void PMSM_SpeedTimerInit(void);
+void tim4_init(void);
 // ==================================
 
 // usart debugging
@@ -52,6 +65,7 @@ uint16_t adc_to_pwm(uint16_t adc_raw);
 // ==================================
 void TIM1_UP_IRQHandler(void);
 void EXTI9_5_IRQHandler(void);
+void TIM3_IRQHandler(void);
 // ==================================
 
 int main(void)
@@ -74,9 +88,11 @@ int main(void)
 	// tim1 setup
 	tim1_init();
 	adc_init();
+	PMSM_SpeedTimerInit();
 
-#ifdef _DEBUG
+#ifdef _USART_EN
 	usart3_init();
+	tim4_init();
 #endif
 
 	delay(5000000); //let power supply settle
@@ -300,6 +316,55 @@ void adc_init(void)
 	ADC_SoftwareStartConvCmd(ADC1, ENABLE); // start conversion (will be endless as we are in continuous mode)
 }
 
+// Initialize TIM3. It used to calculate the speed
+void PMSM_SpeedTimerInit(void)
+{
+	TIM_TimeBaseInitTypeDef TIMER_InitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+
+	TIM_TimeBaseStructInit(&TIMER_InitStructure);
+	TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIMER_InitStructure.TIM_Prescaler = SPEED_TIMER_PRESCALER;
+	TIMER_InitStructure.TIM_Period = SPEED_TIMER_PERIOD;
+	TIM_TimeBaseInit(TIM3, &TIMER_InitStructure);
+	TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+	TIM_SetCounter(TIM3, 0);
+	//TIM_Cmd(TIM3, ENABLE);
+
+	// NVIC Configuration
+	// Enable the TIM3_IRQn Interrupt
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+}
+
+void tim4_init(void)
+{
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+
+	TIM_TimeBaseInitTypeDef TIMER_InitStructure;
+	TIM_TimeBaseStructInit(&TIMER_InitStructure);
+	TIMER_InitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIMER_InitStructure.TIM_Prescaler = 7200;
+	TIMER_InitStructure.TIM_Period = 10000;
+	TIM_TimeBaseInit(TIM4, &TIMER_InitStructure);
+	TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
+	TIM_Cmd(TIM4, ENABLE);
+
+	/* NVIC Configuration */
+	/* Enable the TIM4_IRQn Interrupt */
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+}
+
 void usart3_init(void)
 {
 	/* Enable USART3 and GPIOB clock */
@@ -309,8 +374,8 @@ void usart3_init(void)
 	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Enable the USARTx Interrupt */
 	NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);
 
@@ -408,11 +473,11 @@ void HallSensorsGetPosition(void)
 		break;
 	}
 
-#ifdef _DEBUG
-	char buffer[80] = {'\0'};
-	sprintf(buffer, "\r\nRaw hall: %d\r\nPhase: %d\r\n", hallpos, phase);
-	USARTSend(buffer);
-#endif
+	// #ifdef _USART_EN
+	// 	char buffer[80] = {'\0'};
+	// 	sprintf(buffer, "\r\nRaw hall: %d\r\nPhase: %d\r\n", hallpos, phase);
+	// 	USARTSend(buffer);
+	// #endif
 }
 
 void commutate(void)
@@ -510,9 +575,42 @@ void EXTI9_5_IRQHandler(void)
 		EXTI_ClearITPendingBit(EXTI_Line8);
 		EXTI_ClearITPendingBit(EXTI_Line9);
 
+		// calc speed
+		speed_raw = TIM_GetCounter(TIM3);
+		TIM_Cmd(TIM3, ENABLE);
+		TIM_SetCounter(TIM3, 0);
+
 		// Commutation
 		HallSensorsGetPosition();
 		commutate();
+	}
+}
+
+void TIM3_IRQHandler(void)
+{
+	if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET)
+	{
+		TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
+		// Overflow - the motor is stopped
+		speed_raw = 0;
+	}
+}
+
+void TIM4_IRQHandler(void)
+{
+	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)
+	{
+		// Обязательно сбрасываем флаг
+		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
+
+#ifdef _USART_EN
+		// 72000000 -F_CPU
+		char buffer[80] = {'\0'};
+		// speed [rev / min]
+		uint16_t speed = (uint16_t)(1 / (24 * ((float)speed_raw / 1000000)) * 60);
+		sprintf(buffer, "speed=%d\r\n", speed);
+		USARTSend(buffer);
+#endif
 	}
 }
 

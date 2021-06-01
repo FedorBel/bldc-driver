@@ -48,7 +48,7 @@ void tim4_init(void);
 
 // usart debugging
 // ==================================
-void usart3_init(void);
+void usart2_init(void);
 void USARTSend(const unsigned char *pucBuffer);
 // ==================================
 
@@ -91,7 +91,7 @@ int main(void)
 	PMSM_SpeedTimerInit();
 
 #ifdef _USART_EN
-	usart3_init();
+	usart2_init();
 	tim4_init();
 #endif
 
@@ -365,15 +365,15 @@ void tim4_init(void)
 	NVIC_Init(&NVIC_InitStructure);
 }
 
-void usart3_init(void)
+void usart2_init(void)
 {
-	/* Enable USART3 and GPIOB clock */
+	/* Enable USART2 and GPIOB clock */
 	// RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
 	/* NVIC Configuration */
 	NVIC_InitTypeDef NVIC_InitStructure;
 	/* Enable the USARTx Interrupt */
-	NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -382,22 +382,22 @@ void usart3_init(void)
 	/* Configure the GPIOs */
 	GPIO_InitTypeDef GPIO_InitStructure;
 
-	/* Configure USART3 Tx (PB.10) as alternate function push-pull */
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+	/* Configure USART2 Tx (PB.2) as alternate function push-pull */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-	/* Configure USART3 Rx (PB.11) as input floating */
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
+	/* Configure USART2 Rx (PB.3) as input floating */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-	/* Configure the USART3 */
+	/* Configure the USART2 */
 	USART_InitTypeDef USART_InitStructure;
 
-	/* USART3 configuration ------------------------------------------------------*/
-	/* USART3 configured as follow:
+	/* USART2 configuration ------------------------------------------------------*/
+	/* USART2 configured as follow:
               - BaudRate = 115200 baud
               - Word Length = 8 Bits
               - One Stop Bit
@@ -417,12 +417,12 @@ void usart3_init(void)
 	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
 	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
 
-	USART_Init(USART3, &USART_InitStructure);
+	USART_Init(USART2, &USART_InitStructure);
 
-	/* Enable USART3 */
-	USART_Cmd(USART3, ENABLE);
+	/* Enable USART2 */
+	USART_Cmd(USART2, ENABLE);
 
-	/* Enable the USART3 Receive interrupt: this interrupt is generated when the
+	/* Enable the USART2 Receive interrupt: this interrupt is generated when the
              USART1 receive data register is not empty */
 	//USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
 }
@@ -431,8 +431,8 @@ void USARTSend(const unsigned char *pucBuffer)
 {
 	while (*pucBuffer)
 	{
-		USART_SendData(USART3, *pucBuffer++);
-		while (USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET)
+		USART_SendData(USART2, *pucBuffer++);
+		while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)
 		{
 		}
 	}

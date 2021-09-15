@@ -607,8 +607,12 @@ void TIM4_IRQHandler(void)
 		// 72000000 -F_CPU
 		char buffer[80] = {'\0'};
 		// speed [rev / min]
-		uint16_t speed = (uint16_t)(1 / (24 * ((float)speed_raw / 1000000)) * 60);
-		sprintf(buffer, "speed=%d\r\n", speed);
+		uint16_t speed = 0;
+		if (speed_raw > 0)
+		{
+			speed = (uint16_t)(1 / (24 * ((float)speed_raw / 1000000)) * 60);
+		}
+		sprintf(buffer, "speed=%d %d\r\n", speed, TIM1->CCR1);
 		USARTSend(buffer);
 #endif
 	}

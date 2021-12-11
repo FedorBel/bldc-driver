@@ -1,6 +1,15 @@
 # BLDC Driver
 3-phase driver for bldc motor, based on stm32 and l6234.
 
+**(SWAP ANY TWO PHASES IF IT'S NOT ROTATING)**
+
+## PCB layout
+
+https://oshwlab.com/pro100bel/l6234pd-driver_copy
+
+![pbc_top](docs/img/pcb_top.png)
+![pcb_bottom](docs/img/pcb_bottom.png)
+
 ## L6234 Block Diagram
 
 ![l6234-block-diag](docs/img/l6234-block-diag.png)
